@@ -8,6 +8,8 @@ authors = ["Tomasz Chabinka <tomaszchabinka@gmail.com>"]
 python = "^3.12"
 fastapi = "^0.111.0"
 mangum = "^0.17.0"
+influxdb3-python = "^0.5.0"
+pandas = "^2.2.2"
 
 [tool.poetry.dev-dependencies]
 
