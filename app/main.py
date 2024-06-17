@@ -28,13 +28,22 @@ class RankingType(StrEnum):
     monthly_revenue = "monthly_revenue"
     number_of_patrons = "number_of_patrons"
     total_revenue = "total_revenue"
+    tags = "tags"
+
+class OrderType(StrEnum):
+    desc = "desc"
+    asc = "asc"
 
 
-def query_top_authors_from_influxdb(criteria: RankingType = RankingType.monthly_revenue, tag: str = None, offset: int = 0,limit: int = 10):
+def query_top_authors_from_influxdb(criteria: RankingType = RankingType.monthly_revenue, tag: str = None, offset: int = 0,limit: int = 10, order: OrderType = OrderType.desc):
     if tag:
-        query = f"SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE tags LIKE '%{tag}%' AND time >= now() - interval '7 days' GROUP BY url) t1 JOIN creators t2 ON t1.url = t2.url AND t1.recent_time = t2.time ORDER BY t2.{criteria} DESC OFFSET {offset} LIMIT {limit};"
+        query = f"""
+        SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators 
+        WHERE find_in_set(split_part(tags, ',', 1), '{tag}') = 1 OR find_in_set(split_part(tags, ',', 2), '{tag}') = 1 OR find_in_set(split_part(tags, ',', 3), '{tag}') = 1
+        AND time >= now() - interval '7 days' GROUP BY url) t1 JOIN creators t2 ON t1.url = t2.url AND t1.recent_time = t2.time ORDER BY t2.{criteria} {order} OFFSET {offset} LIMIT {limit};
+        """
     else: 
-        query = f"SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE time >= now() - interval '7 days' GROUP BY url) t1 JOIN creators t2 ON t1.url = t2.url AND t1.recent_time = t2.time ORDER BY t2.{criteria} DESC OFFSET {offset} LIMIT {limit};"
+        query = f"SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE time >= now() - interval '7 days' GROUP BY url) t1 JOIN creators t2 ON t1.url = t2.url AND t1.recent_time = t2.time ORDER BY t2.{criteria} {order} OFFSET {offset} LIMIT {limit};"
 
     reader = client.query(query=query, mode="reader", language="sql")
     table = reader.read_all()
@@ -66,8 +75,8 @@ def query_authors(tag: str = None):
 
 
 @app.get("/top_authors")
-def get_top_authors(criteria: RankingType = RankingType.monthly_revenue, tag: str | None = None, offset: int = 0, limit: int = 10):
-    df = query_top_authors_from_influxdb(criteria, tag, offset, limit)
+def get_top_authors(criteria: RankingType = RankingType.monthly_revenue, tag: str | None = None, offset: int = 0, limit: int = 10, order: OrderType = OrderType.desc):
+    df = query_top_authors_from_influxdb(criteria, tag, offset, limit, order)
     return Response(df.to_json(orient="records"), media_type="application/json")
 
 
