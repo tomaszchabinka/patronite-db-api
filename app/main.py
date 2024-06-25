@@ -89,6 +89,23 @@ def query_tags():
     table = reader.read_all()
     return table.to_pandas()
 
+def query_trending_authors():
+    query = f"""
+SELECT weekly.*, weekly.number_of_patrons - monthly.number_of_patrons AS increase FROM 
+(SELECT monthly.url, monthly.number_of_patrons FROM (SELECT url, MIN(time) as starting_time FROM creators WHERE 
+time >= now() - interval '14 day' AND time < now() - interval '7 day' GROUP BY url) last_month
+JOIN creators monthly ON last_month.url = monthly.url AND last_month.starting_time = monthly.time)
+JOIN
+(SELECT weekly.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE 
+time >= now() - interval '7 days' GROUP BY url) last_week
+JOIN creators weekly ON last_week.url = weekly.url AND last_week.recent_time = weekly.time)
+ON weekly.url = monthly.url AND weekly.number_of_patrons > monthly.number_of_patrons
+ORDER BY increase DESC
+LIMIT 10;
+    """
+    reader = client.query(query=query, mode="reader", language="sql")
+    table = reader.read_all()
+    return table.to_pandas()
 
 def query_authors(tags: str = None):
     if tags:
@@ -176,6 +193,10 @@ def get_top_authors(
     )
     return Response(df.to_json(orient="records"), media_type="application/json")
 
+@app.get("/trending_authors")
+def get_trending_authors():
+    df = query_trending_authors()
+    return Response(df.to_json(orient="records"), media_type="application/json")
 
 @app.get("/metadata/tags")
 def get_tags():
@@ -225,3 +246,8 @@ handler = Mangum(
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000)
+
+# SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE 
+# time >= now() - interval '7 days' GROUP BY url)
+# t1 JOIN creators t2 ON t1.url = t2.url AND t1.recent_time = t2.time
+# LIMIT 10;
