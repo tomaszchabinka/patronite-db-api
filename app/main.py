@@ -45,6 +45,7 @@ def query_top_authors_from_influxdb(
         offset: int = 0,
         limit: int = 10, 
         order: OrderType = OrderType.desc,
+        name: str = None,
         tags: str = None,
         min_total_revenue: int = None,
         max_total_revenue: int = None,
@@ -56,6 +57,8 @@ def query_top_authors_from_influxdb(
     queryString = f"SELECT t2.* FROM (SELECT url, MAX(time) as recent_time FROM creators WHERE"
     if tags:
         queryString += f" (find_in_set(split_part(tags, ',', 1), '{tags}') = 1 OR find_in_set(split_part(tags, ',', 2), '{tags}') = 1 OR find_in_set(split_part(tags, ',', 3), '{tags}') = 1) AND"
+    if name:
+        queryString += f" LOWER(name) LIKE '%{name}%' AND"
     if min_total_revenue:
         queryString += f" total_revenue >= {min_total_revenue} AND"
     if max_total_revenue:
@@ -98,6 +101,7 @@ def query_authors(tags: str = None):
     return table.to_pandas()
 
 def query_row_count(
+        name: str = None,
         tags: str = None,
         min_total_revenue: int = None,
         max_total_revenue: int = None,
@@ -109,6 +113,8 @@ def query_row_count(
     queryString = f"SELECT last_value(name ORDER BY time) AS name FROM creators WHERE"
     if tags:
         queryString += f" (find_in_set(split_part(tags, ',', 1), '{tags}') = 1 OR find_in_set(split_part(tags, ',', 2), '{tags}') = 1 OR find_in_set(split_part(tags, ',', 3), '{tags}') = 1) AND"
+    if name:
+        queryString += f" creators.name LIKE '%{name}%' AND"
     if min_total_revenue:
         queryString += f" total_revenue >= {min_total_revenue} AND"
     if max_total_revenue:
@@ -145,6 +151,7 @@ def get_top_authors(
     offset: int = 0,
     limit: int = 10,
     order: OrderType = OrderType.desc,
+    name: str | None = None,
     tags: str | None = None,
     min_total_revenue: int | None = None,
     max_total_revenue: int | None = None,
@@ -158,6 +165,7 @@ def get_top_authors(
         offset,
         limit,
         order,
+        name,
         tags,
         min_total_revenue,
         max_total_revenue,
@@ -182,6 +190,7 @@ def get_authors(tags: str | None = None):
 
 @app.get("/metadata/row_count")
 def get_row_count(
+        name: str = None,
         tags: str = None,
         min_total_revenue: int = None,
         max_total_revenue: int = None,
@@ -191,6 +200,7 @@ def get_row_count(
         max_number_of_patrons: int = None,
         ):
     df = query_row_count(
+        name,
         tags,
         min_total_revenue,
         max_total_revenue,
@@ -206,7 +216,6 @@ def get_min_max():
     df = query_min_max()
     return Response(df.to_json(orient="records"), media_type="application/json")
 
-# The magic that allows the integration with AWS Lambda
 handler = Mangum(
     app, 
     lifespan="off", 
@@ -216,11 +225,3 @@ handler = Mangum(
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000)
-
-
-# SELECT 'total_revenue' as name, MAX(total_revenue) as max FROM (SELECT last_value(total_revenue ORDER BY time) AS total_revenue FROM creators WHERE time >= now() - interval '7 days' GROUP BY name)
-# UNION
-# SELECT 'number_of_patrons' as name, MAX(number_of_patrons) as max FROM (SELECT last_value(number_of_patrons ORDER BY time) AS number_of_patrons FROM creators WHERE time >= now() - interval '7 days' GROUP BY name)
-# UNION
-# SELECT 'monthly_revenue' as name, MAX(monthly_revenue) as max FROM (SELECT last_value(monthly_revenue ORDER BY time) AS monthly_revenue FROM creators WHERE time >= now() - interval '7 days' GROUP BY name)
-# UNION
